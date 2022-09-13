@@ -1048,3 +1048,25 @@ struct wd_comp_driver hisi_zip = {
 };
 
 WD_COMP_SET_DRIVER(hisi_zip);
+
+struct comp_alg hisi_zip = {
+	.alg_name		= "zlib\ngzip\ndeflate\nlz77_zstd",
+	.drv_name		= "hisi_zip",
+	.priority		= 900;
+	.drv_ctx_size		= sizeof(struct hisi_zip_ctx),
+	.init			= hisi_zip_init,
+	.exit			= hisi_zip_exit,
+	.comp_send		= hisi_zip_comp_send,
+	.comp_recv		= hisi_zip_comp_recv,
+};
+
+void __attribute__(constructor) hisi_zip_probe(void)
+{
+	comp_alg_register(hisi_zip);
+}
+
+void __attribute__(destructor) hisi_zip_remove(void)
+{
+	comp_alg_unregister(hisi_zip);
+}
+

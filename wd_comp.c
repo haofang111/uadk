@@ -773,3 +773,141 @@ int wd_comp_get_env_param(__u32 node, __u32 type, __u32 mode,
 	return wd_alg_get_env_param(&wd_comp_env_config,
 				    ctx_attr, num, is_enable);
 }
+static struct comp_alg_list g_comp_list;
+
+/* register提供给udriver注册算法实例到算法层框架中 */
+int comp_alg_register(struct comp_alg *c_alg)
+{
+	struct comp_alg_list *p;
+
+	if (g_comp_list == NULL) {
+		g_comp_list->c_alg = c_alg;
+		return 0;
+	}
+	p = g_comp_list->next;
+	while (p != NULL) {
+		p = p->next;
+	}
+	p = c_alg;
+}
+
+void comp_alg_unregister(void)
+{
+	return;
+}
+
+/* 遍历open udriver lib */
+static struct drv_provider_list wd_comp_drv_open(void)
+{
+	struct drv_provider_list *prov, *head = NULL;
+	char *drv_lib_path = "/usr/lib64";
+	char file_name[256];
+	struct dirent *dent;
+	DIR *dslib_dir;
+	void *handle;
+
+	dslib_dir = opendir(drv_lib_path);
+	if (!dslib_dir) {
+		WD_ERR("failed to open drvlib dir: %s\n", drv_lib_path);
+		return NULL;
+	}
+
+	while ((dent = readdir(dslib_dir))) {
+		ret = snprintf(file_name, sizeof(file_name), "%s/%s",
+			 drv_lib_path, dent->d_name);
+		if (ret < 0)
+			continue;
+
+		handle = dlopen(file_name, RTLD_LAZY);
+		if (!handle) {
+			WD_ERR("failed to load drvlib %s(%s)", file_name, dlerror());
+			continue;
+		}
+		
+		prov = calloc(1, sizeof(*prov));
+		if (!prov) {
+			WD_ERR("failed to alloc drv_provider %s\n", file_name);
+			dlclose(handle);
+			continue;
+		}
+
+		prov->handle = handle;
+
+		if (!head)
+			head = tmp = prov;
+		else {
+			while (tmp->next)
+				tmp = tmp->next;
+			tmp->next = prov;
+		}
+	}
+
+	closedir(dslib_dir);
+
+	return head;
+}
+
+static void wd_comp_drv_close(struct drv_provider_list *list)
+{
+	struct drv_provider_list *prov, *next;
+
+	if (!list)
+		return;
+	prov = list;
+	while (prov) {
+		next = prov->next;
+		if (prov->handle)
+			dlclose(prov->handle);
+		free(prov);
+		prov = next;
+	}
+}
+
+
+/* find and bind pefect alg drv ops. todo fall_back flag */
+static int wd_comp_drv_bind(char alg_name)
+{
+	struct comp_alg_list *p = g_comp_list;
+	struct comp_alg *alg_goal = NULL;
+	int max_pri = 0;
+
+	if (!g_comp_list)
+		return -1;
+	while (!p) {
+		if (strcmp(alg_name, p->c_alg->alg_name))
+			continue;
+
+		if (p->c_alg->priority > max_pri) {
+			max_pri = p->c_alg->priority;
+			alg_goal = p->alg;
+		}
+		p = p->next;
+	}
+
+	if (!alg_goal) {
+		wd_comp_setting.driver = alg_goal;
+		WD_ERR("failed bind drv alg");
+		return -1;
+	}
+
+	wd_comp_setting.driver = alg_goal;
+	WD_INFO("success bind drv alg %s,%s,%d\n", alg_goal->alg_name,
+		alg_goal->driver_name, alg_goal->priority);
+
+	return 0;
+}
+
+int wd_comp_init2(struct ctx_setup *config)
+{
+	wd_comp_drv_open();
+	wd_comp_drv_bind(config->alg_name);
+	wd_comp_env_init(sched);
+}
+
+void wd_comp_uninit2(void)
+{
+	wd_comp_uninit();
+	wd_comp_drv_close();
+}
+
+

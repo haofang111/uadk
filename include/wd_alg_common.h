@@ -63,6 +63,14 @@ struct wd_ctx_config {
 	void *priv;
 };
 
+struct wd_ctx_setup {
+	char *alg_name;
+	__u8 direction;
+	__u8 ctx_mode;
+	__u8 sched_type;
+	void *priv;
+};
+
 struct wd_ctx_internal {
 	handle_t ctx;
 	__u8 op_type;
@@ -108,6 +116,31 @@ struct wd_datalist {
 	__u32 len;
 	struct wd_datalist *next;
 };
+
+
+struct drv_provider_list {
+	void *handle;
+	struct drv_provider_list *next;
+}
+
+struct comp_alg {
+	char *alg_name;
+	char *driver_name;
+	int priority;
+	struct uacce_dev_list *dev_list;
+	int (*init)(struct wd_comp_session *sess);
+	void (*exit)(void *priv);
+	int (*comp_send)(handle_t ctx, void *comp_msg);
+	int (*comp_recv)(handle_t ctx, void *comp_msg);
+};
+
+struct comp_alg_list {
+	struct comp_alg *c_alg;
+	struct comp_alg_list *next;
+};
+
+int comp_alg_register(struct comp_alg *c_alg);
+void comp_alg_unregister(struct comp_alg *c_alg);
 
 #ifdef __cplusplus
 }
